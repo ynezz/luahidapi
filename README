@@ -1,0 +1,90 @@
+
+README for luahidapi
+====================
+
+hidapi can be found at: http://www.signal11.us/oss/hidapi/
+
+This is a preliminary release. There are a number of things that need to
+be done before one can call it a proper and stable release. So consider
+this a working starting point from which a proper 'official' luahidapi
+release can be released to the community.
+
+This release should be considered as an early proof-of-concept only.
+
+(1) Tested only on WinXP, MinGW/MSYS, Lua 5.1. The codebase is
+    largely cross-platform.
+(2) Change call bindings that are awkward where necessary.
+(3) Sane Unicode handling, including missing serial number
+    parameter support in the device open call.
+(4) Make sure wchar_t handling works for different platforms.
+(5) Review parameter validation.
+(6) Add support for using a table of numbers as input to
+    report/feature read/write.
+(7) Test all API calls.
+(8) Make it compatible with Lua 5.2.
+
+If someone wants to make official releases, you are more than welcome to
+take charge of it. I don't plan to make regular public releases, so I
+would much rather leave it to someone else who wants to do it.
+
+File Details
+============
+
+hidapi.h	From the official hidapi
+hidapi.dll	Hijacked from javahidapi
+luahidapi.h	luahidapi header file
+luahidapi.c	luahidapi body
+test.lua	test script, run like 'lua test.lua'
+Makefile	a 'make' will build luahidapi.dll on MinGW/MSYS
+
+You will also need a USB device running a USB HID profile. Win32 does
+not allow users to touch keyboard and mouse HID devices, so you need
+something else to communicate with. I run a custom HID on an old
+PIC18F2450 that I normally use for prototyping.
+
+Sample output run
+=================
+
+A simple luahidapi test:
+Lib VERSION =   0.1
+hid library: init
+
+Device found:
+path = '\\?\hid#vid_04d8&pid_8abc#6&332cce80&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}'
+vid = 0x04D8
+pid = 0x8ABC
+serial_number = '?'
+release = 0x0001
+manufacturer_string = 'custom HID test'
+product_string = 'custom device'
+usage_page = 0xFF00
+usage = 0x01
+interface = -1
+
+Open: opened test device
+
+Manufacturer String: custom HID test
+Product String: custom device
+
+Done non-blocking read test
+Size of report read = 0
+
+Writing 0x12345678 to device
+Waiting...
+Read 0x12345678 from device
+
+Writing 0xDEADBEEF to device
+Waiting...
+Read 0xDEADBEEF from device
+
+Close: closed test device
+hid library: exit
+
+P.S. I'm unsure why there is a single Unicode char for serial_number
+in the enumeration. The device has no string index entry for the
+serial number. The Unicode char is 0x0409. Perhaps it is a library
+or platform glitch.
+
+--
+Kein-Hong Man <keinhong@gmail.com>
+2012-05-09
