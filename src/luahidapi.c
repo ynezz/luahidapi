@@ -713,6 +713,24 @@ static int hidapi_hiddevice_meta_gc(lua_State *L)
 }
 
 /*----------------------------------------------------------------------
+ * hid.msleep(milliseconds)
+ * A convenience sleep function. Time is specified in milliseconds.
+ *----------------------------------------------------------------------
+ */
+
+static int hidapi_msleep(lua_State *L)
+{
+    int msec = luaL_checkinteger(L, 1);
+
+#ifdef WIN32
+    Sleep(msec);
+#else
+    usleep(msec * 1000);
+#endif
+    return 0;
+}
+
+/*----------------------------------------------------------------------
  * register and create metatable for HIDDEVICE object
  *----------------------------------------------------------------------
  */
@@ -755,6 +773,7 @@ static const struct luaL_reg hidapi_func_list[] = {
     {"getfeature", hidapi_getfeature},
     {"error", hidapi_error},
     {"close", hidapi_close},
+    {"msleep", hidapi_msleep},
     {NULL, NULL},
 };
 
