@@ -39,7 +39,7 @@ end
 ------------------------------------------------------------------------
 
 print("Full speed echo test for USB HID device:")
-print("Lib VERSION = ", hid.VERSION)
+print(string.format("Lib VERSION %s build on %s", hid._VERSION, hid._TIMESTAMP))
 
 if hid.init() then
   print("hid library: init")

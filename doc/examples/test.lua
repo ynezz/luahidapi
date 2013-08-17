@@ -22,7 +22,7 @@ local hid = require "luahidapi"
 ------------------------------------------------------------------------
 
 print("A simple luahidapi test:")
-print("Lib VERSION = ", hid.VERSION)
+print(string.format("Lib VERSION %s build on %s", hid._VERSION, hid._TIMESTAMP))
 
 if hid.init() then
   print("hid library: init")
