@@ -20,22 +20,25 @@
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+#include <unistd.h>
 
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
+
+#ifndef TRUE
+#define TRUE 1
 #endif
 
 #include "hidapi.h"
 
 #include "luahidapi.h"
+#include "version.h"
 
-/*----------------------------------------------------------------------
- * constants and config
- *----------------------------------------------------------------------
- */
-
-#define HIDAPI_VERSION  "0.1"
-#define HIDAPI_LIB_NAME "hid"
+#define MODULE_TIMESTAMP __DATE__ " " __TIME__
+#define MODULE_NAMESPACE "hid"
+#define MODULE_VERSION LUAHIDAPI_VERSION
 
 #define USB_STR_MAXLEN 255      /* max USB string length */
 
@@ -143,6 +146,7 @@ static HidEnum_Obj *check_HidEnum_Obj(lua_State *L)
 
 static int hidapi_enumerate(lua_State *L)
 {
+    HidEnum_Obj *o;
     int n = lua_gettop(L);  /* number of arguments */
     unsigned short vendor_id = 0;
     unsigned short product_id = 0;
@@ -166,7 +170,7 @@ static int hidapi_enumerate(lua_State *L)
     }
 
     /* prepare object, state */
-    HidEnum_Obj *o = (HidEnum_Obj *)lua_newuserdata(L, sizeof(HidEnum_Obj));
+    o = (HidEnum_Obj *)lua_newuserdata(L, sizeof(HidEnum_Obj));
     o->state = HIDENUM_CLOSE;
     luaL_getmetatable(L, HIDAPI_LIB_HIDENUM);
     lua_setmetatable(L, -2);
@@ -191,9 +195,10 @@ error_handler:
  *----------------------------------------------------------------------
  */
 
-void push_forced_ascii(lua_State *L, const wchar_t *s)
+static void push_forced_ascii(lua_State *L, const wchar_t *s)
 {
-    int i;
+    size_t n;
+    unsigned int i;
     char d[USB_STR_MAXLEN + 1];
 
     if (!s) {                   /* check for NULL case */
@@ -201,7 +206,7 @@ void push_forced_ascii(lua_State *L, const wchar_t *s)
         lua_pushstring(L, d);
         return;
     }
-    size_t n = wcslen(s);
+    n = wcslen(s);
     if (n > USB_STR_MAXLEN) n = USB_STR_MAXLEN;
 
     for (i = 0; i < n; i++) {
@@ -224,6 +229,8 @@ void push_forced_ascii(lua_State *L, const wchar_t *s)
 
 static int hidapi_enum_next(lua_State *L)
 {
+    struct hid_device_info *dinfo;
+
     /* validate object */
     HidEnum_Obj *o = check_HidEnum_Obj(L);
     if (o->state == HIDENUM_DONE) {
@@ -232,7 +239,7 @@ static int hidapi_enum_next(lua_State *L)
     }
 
     /* create device info table */
-    struct hid_device_info *dinfo = o->dev_info;
+    dinfo = o->dev_info;
     lua_createtable(L, 0, 10);  /* 10 = number of fields */
 
     lua_pushstring(L, dinfo->path);
@@ -332,6 +339,9 @@ static void hidapi_create_hidenum_obj(lua_State *L) {
 static int hidapi_open(lua_State *L)
 {
     hid_device *dev;
+    HidDevice_Obj *o;
+    unsigned short vendor_id;
+    unsigned short product_id;
     int n = lua_gettop(L);  /* number of arguments */
 
     if (n == 2 && lua_isnumber(L, 1) && lua_isnumber(L, 2)) {
@@ -341,13 +351,13 @@ static int hidapi_open(lua_State *L)
         id = luaL_checkinteger(L, 1);
         if (id < 0 || id > 0xFFFF)
             goto error_handler;
-        unsigned short vendor_id = (unsigned short)id;
 
+        vendor_id = (unsigned short)id;
         id = luaL_checkinteger(L, 2);
         if (id < 0 || id > 0xFFFF)
             goto error_handler;
-        unsigned short product_id = (unsigned short)id;
 
+        product_id = (unsigned short)id;
         dev = hid_open(vendor_id, product_id, NULL);
 
     } else if (n == 2 && lua_isstring(L, 1)) {
@@ -361,7 +371,7 @@ static int hidapi_open(lua_State *L)
         goto error_handler;
 
     /* handle is valid, prepare object */
-    HidDevice_Obj *o = (HidDevice_Obj *)lua_newuserdata(L, sizeof(HidDevice_Obj));
+    o = (HidDevice_Obj *)lua_newuserdata(L, sizeof(HidDevice_Obj));
     o->device = dev;
     luaL_getmetatable(L, HIDAPI_LIB_HIDDEVICE);
     lua_setmetatable(L, -2);
@@ -387,7 +397,12 @@ error_handler:
 
 static int hidapi_write(lua_State *L)
 {
-    int i;
+    int res;
+    char *rdata;
+    size_t rsize;
+    size_t txsize;
+    unsigned int i;
+    unsigned char *txdata;
     HidDevice_Obj *o = check_HidDevice_Obj(L);
     int n = lua_gettop(L);  /* number of arguments */
     int rid = 0;
@@ -400,22 +415,21 @@ static int hidapi_write(lua_State *L)
         /* report ID and report */
         rid = luaL_checkinteger(L, 2);
     }
-    size_t rsize;
-    const char *rdata = luaL_checklstring(L, rsrc, &rsize);
+    rdata = (char *)luaL_checklstring(L, rsrc, &rsize);
 
     /* report ID range check */
     if (rid < 0 || rid > 0xFF)
         goto error_handler;
 
     /* prepare buffer for report transmit */
-    size_t txsize = rsize + 1;
-    unsigned char *txdata = (unsigned char *)lua_newuserdata(L, txsize);
+    txsize = rsize + 1;
+    txdata = (unsigned char *)lua_newuserdata(L, txsize);
     txdata[0] = rid;
     for (i = 0; i < rsize; i++)
         txdata[i + 1] = rdata[i];
 
     /* send */
-    int res = hid_write(o->device, txdata, txsize);
+    res = hid_write(o->device, txdata, txsize);
     if (res < 0)
         goto error_handler;
     lua_pushinteger(L, res);
@@ -442,6 +456,10 @@ error_handler:
 
 static int hidapi_read(lua_State *L)
 {
+    int res;
+    int timeout = 0;
+    int using_timeout = 0;
+    unsigned char *rxdata;
     HidDevice_Obj *o = check_HidDevice_Obj(L);
     int n = lua_gettop(L);  /* number of arguments */
 
@@ -449,18 +467,15 @@ static int hidapi_read(lua_State *L)
     if (rxsize < 0)
         goto error_handler;
 
-    int using_timeout = 0;
-    int timeout = 0;
     if (n == 3) {               /* get optional timeout */
         using_timeout = 1;
         timeout = luaL_checkinteger(L, 3);
     }
 
     /* prepare buffer for report receive */
-    unsigned char *rxdata = (unsigned char *)lua_newuserdata(L, rxsize);
+    rxdata = (unsigned char *)lua_newuserdata(L, rxsize);
 
     /* receive */
-    int res;
     if (using_timeout) {
         res = hid_read_timeout(o->device, rxdata, rxsize, timeout);
     } else {
@@ -535,9 +550,7 @@ enum {
 
 static int hidapi_getstring(lua_State *L)
 {
-    wchar_t ws[USB_STR_MAXLEN];
-    ws[0] = 0;
-
+    wchar_t ws[USB_STR_MAXLEN] = {0};
     HidDevice_Obj *o = check_HidDevice_Obj(L);
 
     static const char *const settings[] = {
@@ -587,7 +600,12 @@ error_handler:
 
 static int hidapi_setfeature(lua_State *L)
 {
-    int i;
+    int res;
+    char *fdata;
+    size_t fsize;
+    size_t txsize;
+    unsigned int i;
+    unsigned char *txdata;
     HidDevice_Obj *o = check_HidDevice_Obj(L);
 
     /* feature report ID check */
@@ -595,18 +613,17 @@ static int hidapi_setfeature(lua_State *L)
     if (fid < 0 || fid > 0xFF)
         goto error_handler;
 
-    size_t fsize;
-    const char *fdata = luaL_checklstring(L, 3, &fsize);
+    fdata = (char *)luaL_checklstring(L, 3, &fsize);
 
     /* prepare buffer for report transmit */
-    size_t txsize = fsize + 1;
-    unsigned char *txdata = (unsigned char *)lua_newuserdata(L, txsize);
+    txsize = fsize + 1;
+    txdata = (unsigned char *)lua_newuserdata(L, txsize);
     txdata[0] = fid;
     for (i = 0; i < fsize; i++)
         txdata[i + 1] = fdata[i];
 
     /* send */
-    int res = hid_send_feature_report(o->device, txdata, txsize);
+    res = hid_send_feature_report(o->device, txdata, txsize);
     if (res < 0)
         goto error_handler;
     lua_pushinteger(L, res);
@@ -630,6 +647,10 @@ error_handler:
 
 static int hidapi_getfeature(lua_State *L)
 {
+    int res;
+    int fsize;
+    size_t rxsize;
+    unsigned char *rxdata;
     HidDevice_Obj *o = check_HidDevice_Obj(L);
 
     /* feature report ID check */
@@ -637,17 +658,17 @@ static int hidapi_getfeature(lua_State *L)
     if (fid < 0 || fid > 0xFF)
         goto error_handler;
 
-    int fsize = luaL_checkinteger(L, 3);
+    fsize = luaL_checkinteger(L, 3);
     if (fsize < 0)
         goto error_handler;
 
     /* prepare buffer for report receive */
-    size_t rxsize = fsize + 1;
-    unsigned char *rxdata = (unsigned char *)lua_newuserdata(L, rxsize);
+    rxsize = fsize + 1;
+    rxdata = (unsigned char *)lua_newuserdata(L, rxsize);
     rxdata[0] = fid;
 
     /* receive */
-    int res = hid_get_feature_report(o->device, rxdata, rxsize);
+    res = hid_get_feature_report(o->device, rxdata, rxsize);
     if (res < 0)
         goto error_handler;
     lua_pushlstring(L, (char *)rxdata, res);
@@ -789,9 +810,15 @@ HIDAPI_API int luaopen_luahidapi(lua_State *L)
     /* device handle metatable */
     hidapi_create_hiddevice_obj(L);
     /* library */
-    luaL_register(L, HIDAPI_LIB_NAME, hidapi_func_list);
-    lua_pushliteral(L, "VERSION");
-    lua_pushliteral(L, HIDAPI_VERSION);
+    luaL_register(L, MODULE_NAMESPACE, hidapi_func_list);
+
+    lua_pushliteral(L, "_VERSION");
+    lua_pushliteral(L, MODULE_VERSION);
     lua_settable(L, -3);
+
+    lua_pushliteral(L, "_TIMESTAMP");
+    lua_pushliteral(L, MODULE_TIMESTAMP);
+    lua_settable(L, -3);
+
     return 1;
 }

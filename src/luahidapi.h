@@ -26,15 +26,14 @@
 extern "C" {
 #endif
 
-/* attributes for defining symbols for use in a shared library */
-#ifdef HIDAPI_LIB_STATIC
-#   define HIDAPI_API   extern
+#if (defined(WIN32) || defined(UNDER_CE)) && !defined(HIDAPI_LIB_STATIC)
+        #ifdef 
+                #define HIDAPI_API __declspec(dllexport)
+        #else
+                #define HIDAPI_API __declspec(dllimport)
+        #endif
 #else
-#   ifdef HIDAPI_LIB_DLL
-#       define HIDAPI_API   __declspec(dllexport)
-#   else
-#       define HIDAPI_API   __declspec(dllimport)
-#   endif
+        #define HIDAPI_API
 #endif
 
 /* ELF optimization of externs when compiling as a shared library */
